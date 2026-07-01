@@ -3,11 +3,7 @@ import type { PhysicsEvent } from '../sim/PhysicsEvent';
 import type { PhysicsWorld } from '../sim/PhysicsWorld';
 import type { SimObject, SimObjectSnapshot } from '../sim/SimObject';
 import { PachinkoSpikeController } from './PachinkoSpikeController';
-import {
-  FIRE_PEG_ID,
-  getSpikeDropLane,
-  type SpikeDropLaneId,
-} from './pachinko-spike/spikeConfig';
+import { FIRE_PEG_ID, getSpikeDropLane } from './pachinko-spike/spikeConfig';
 
 class FakePhysicsWorld implements PhysicsWorld {
   resetCount = 0;
@@ -16,6 +12,10 @@ class FakePhysicsWorld implements PhysicsWorld {
 
   addObject(object: SimObject): void {
     this.objects.push(object);
+  }
+
+  removeObject(id: string): void {
+    this.objects = this.objects.filter((object) => object.id !== id);
   }
 
   step(_deltaMs: number): readonly PhysicsEvent[] {
@@ -42,6 +42,18 @@ class FakePhysicsWorld implements PhysicsWorld {
   getObject(id: string): SimObject | undefined {
     return this.objects.find((object) => object.id === id);
   }
+
+  setObjectPosition(id: string, x: number, y: number): void {
+    this.objects = this.objects.map((object) =>
+      object.id === id
+        ? {
+            ...object,
+            x,
+            y,
+          }
+        : object,
+    );
+  }
 }
 
 describe('PachinkoSpikeController', () => {
@@ -50,7 +62,7 @@ describe('PachinkoSpikeController', () => {
     const controller = new PachinkoSpikeController(world);
 
     controller.selectDropLane('left');
-    controller.dropHerb();
+    controller.dropSelectedIngredient();
     world.queueEvent({
       type: 'ingredient-hit-peg',
       ingredientId: 'spike-herb-1',
@@ -77,9 +89,14 @@ describe('PachinkoSpikeController', () => {
     expect(model.pachinko.eventLog).not.toContain(
       'Herb touched Fire Peg and became Ash.',
     );
+    expect(model.pachinko.materialPreview).toEqual({
+      healing: 1,
+      bone: 0,
+      poison: 0,
+    });
   });
 
-  it('runs the full setup flow through lane drops, reactions, cauldron entry, and reset', () => {
+  it('runs the setup queue through mixed ingredients, reactions, cauldron entry, and reset', () => {
     const world = new FakePhysicsWorld();
     const controller = new PachinkoSpikeController(world);
     const initialModel = controller.getViewModel();
@@ -87,116 +104,272 @@ describe('PachinkoSpikeController', () => {
     expect(initialModel.pachinko.setupPhase).toBe('drop-phase');
     expect(initialModel.pachinko.dropsRemaining).toBe(3);
     expect(initialModel.pachinko.selectedLaneId).toBe('center');
+    expect(initialModel.pachinko.selectedIngredientKind).toBe('herb');
     expect(initialModel.pachinko.canDrop).toBe(true);
+    expect(initialModel.pachinko.claw.selectedPositionId).toBe('center');
+    expect(initialModel.pachinko.claw.canGrab).toBe(false);
+    expect(initialModel.pachinko.claw.grabUsed).toBe(false);
+    expect(initialModel.pachinko.claw.grabbedContents).toEqual([]);
+    expect(initialModel.pachinko.vat.selectedVatId).toBe('healing');
+    expect(initialModel.pachinko.vat.selectedVatLabel).toBe('Healing Vat');
+    expect(initialModel.pachinko.vat.canSelect).toBe(false);
+    expect(initialModel.pachinko.vat.canSubmit).toBe(false);
+    expect(initialModel.pachinko.vat.submitted).toBe(false);
+    expect(initialModel.pachinko.vat.lastScoringResult).toBeUndefined();
+    expect(initialModel.pachinko.ingredientQueue).toEqual([
+      { kind: 'herb', label: 'Herb', dropped: false, selected: true },
+      { kind: 'bone', label: 'Bone', dropped: false, selected: false },
+      { kind: 'mushroom', label: 'Mushroom', dropped: false, selected: false },
+    ]);
     expect(initialModel.pachinko.ingredients).toEqual([]);
     expect(initialModel.pachinko.cauldronContents).toEqual([]);
 
-    const dropLanes = ['left', 'center', 'right'] satisfies readonly SpikeDropLaneId[];
+    controller.selectDropLane('center');
+    let droppedModel = controller.dropSelectedIngredient();
+    let spawnedObject = world.getObject('spike-herb-1');
 
-    for (const laneId of dropLanes) {
-      expect(controller.selectDropLane(laneId).pachinko.selectedLaneId).toBe(
-        laneId,
-      );
-    }
+    expect(droppedModel.pachinko.selectedLaneId).toBe('center');
+    expect(droppedModel.pachinko.selectedIngredientKind).toBe('bone');
+    expect(droppedModel.pachinko.ingredients).toHaveLength(1);
+    expect(droppedModel.pachinko.ingredients.at(-1)).toMatchObject({
+      id: 'spike-herb-1',
+      kind: 'herb',
+    });
+    expect(droppedModel.pachinko.dropsRemaining).toBe(2);
+    expect(spawnedObject?.x).toBe(getSpikeDropLane('center').x);
+    expect(spawnedObject?.y).toBe(74);
 
-    for (const [index, laneId] of dropLanes.entries()) {
-      const dropNumber = index + 1;
-      const ingredientId = `spike-herb-${dropNumber}`;
+    world.queueEvent({
+      type: 'ingredient-hit-peg',
+      ingredientId: 'spike-herb-1',
+      pegId: FIRE_PEG_ID,
+    });
+    world.queueEvent({
+      type: 'ingredient-touched-reaction',
+      ingredientId: 'spike-herb-1',
+      reactionObjectId: FIRE_PEG_ID,
+      reactionKind: 'fire',
+    });
+    world.queueEvent({
+      type: 'ingredient-entered-cauldron',
+      ingredientId: 'spike-herb-1',
+    });
 
-      controller.selectDropLane(laneId);
-      const droppedModel = controller.dropHerb();
-      const spawnedObject = world.getObject(ingredientId);
+    let steppedModel = controller.step(16);
 
-      expect(droppedModel.pachinko.selectedLaneId).toBe(laneId);
-      expect(droppedModel.pachinko.ingredients).toHaveLength(dropNumber);
-      expect(droppedModel.pachinko.ingredients.at(-1)).toMatchObject({
-        id: ingredientId,
-        kind: 'herb',
-      });
-      expect(droppedModel.pachinko.dropsRemaining).toBe(3 - dropNumber);
-      expect(spawnedObject?.x).toBe(getSpikeDropLane(laneId).x);
-      expect(spawnedObject?.y).toBe(74);
+    expect(steppedModel.pachinko.ingredients.at(-1)?.kind).toBe('ash');
+    expect(steppedModel.pachinko.cauldronContents.at(-1)).toMatchObject({
+      ingredientId: 'spike-herb-1',
+      kind: 'ash',
+      label: 'Ash',
+      enteredCauldron: true,
+    });
+    expect(steppedModel.pachinko.materialPreview).toEqual({
+      healing: 0,
+      bone: 1,
+      poison: 0,
+    });
 
-      if (laneId === 'center') {
-        world.queueEvent({
-          type: 'ingredient-hit-peg',
-          ingredientId,
-          pegId: FIRE_PEG_ID,
-        });
-        world.queueEvent({
-          type: 'ingredient-touched-reaction',
-          ingredientId,
-          reactionObjectId: FIRE_PEG_ID,
-          reactionKind: 'fire',
-        });
-      } else {
-        world.queueEvent({
-          type: 'ingredient-hit-peg',
-          ingredientId,
-          pegId:
-            laneId === 'left' ? 'peg-left-guide' : 'peg-right-guide',
-        });
-      }
+    controller.selectDropLane('left');
+    droppedModel = controller.dropSelectedIngredient();
+    spawnedObject = world.getObject('spike-bone-2');
 
-      world.queueEvent({
-        type: 'ingredient-entered-cauldron',
-        ingredientId,
-      });
+    expect(droppedModel.pachinko.selectedIngredientKind).toBe('mushroom');
+    expect(droppedModel.pachinko.ingredients.at(-1)).toMatchObject({
+      id: 'spike-bone-2',
+      kind: 'bone',
+    });
+    expect(droppedModel.pachinko.dropsRemaining).toBe(1);
+    expect(spawnedObject?.x).toBe(getSpikeDropLane('left').x);
 
-      const steppedModel = controller.step(16);
-      const expectedKind = laneId === 'center' ? 'ash' : 'herb';
-      const expectedLabel = laneId === 'center' ? 'Ash' : 'Herb';
+    world.queueEvent({
+      type: 'ingredient-hit-peg',
+      ingredientId: 'spike-bone-2',
+      pegId: 'peg-left-guide',
+    });
+    world.queueEvent({
+      type: 'ingredient-entered-cauldron',
+      ingredientId: 'spike-bone-2',
+    });
 
-      expect(steppedModel.pachinko.ingredients.at(-1)?.kind).toBe(
-        expectedKind,
-      );
-      expect(steppedModel.pachinko.cauldronContents.at(-1)).toMatchObject({
-        ingredientId,
-        kind: expectedKind,
-        label: expectedLabel,
-        enteredCauldron: true,
-      });
-      expect(
-        steppedModel.pachinko.cauldronContents.filter(
-          (entry) => entry.enteredCauldron,
-        ),
-      ).toHaveLength(dropNumber);
-      expect(steppedModel.pachinko.lastPhysicsEvent).toBe(
-        `${ingredientId} entered the cauldron sensor.`,
-      );
-      expect(steppedModel.pachinko.lastDomainEvent).toBe(
-        `${expectedLabel} entered the cauldron.`,
-      );
-    }
+    steppedModel = controller.step(16);
+
+    expect(steppedModel.pachinko.ingredients.at(-1)?.kind).toBe('bone');
+    expect(steppedModel.pachinko.cauldronContents.at(-1)).toMatchObject({
+      ingredientId: 'spike-bone-2',
+      kind: 'bone',
+      label: 'Bone',
+      enteredCauldron: true,
+    });
+    expect(steppedModel.pachinko.materialPreview).toEqual({
+      healing: 0,
+      bone: 2,
+      poison: 0,
+    });
+
+    controller.selectDropLane('right');
+    droppedModel = controller.dropSelectedIngredient();
+    spawnedObject = world.getObject('spike-mushroom-3');
+
+    expect(droppedModel.pachinko.selectedIngredientKind).toBeUndefined();
+    expect(droppedModel.pachinko.ingredients.at(-1)).toMatchObject({
+      id: 'spike-mushroom-3',
+      kind: 'mushroom',
+    });
+    expect(droppedModel.pachinko.dropsRemaining).toBe(0);
+    expect(droppedModel.pachinko.setupPhase).toBe('ready-for-claw');
+    expect(spawnedObject?.x).toBe(getSpikeDropLane('right').x);
+
+    world.queueEvent({
+      type: 'ingredient-hit-peg',
+      ingredientId: 'spike-mushroom-3',
+      pegId: 'peg-right-guide',
+    });
+    world.queueEvent({
+      type: 'ingredient-entered-cauldron',
+      ingredientId: 'spike-mushroom-3',
+    });
+
+    steppedModel = controller.step(16);
+
+    expect(steppedModel.pachinko.cauldronContents.at(-1)).toMatchObject({
+      ingredientId: 'spike-mushroom-3',
+      kind: 'mushroom',
+      label: 'Mushroom',
+      enteredCauldron: true,
+    });
+    expect(steppedModel.pachinko.materialPreview).toEqual({
+      healing: 0,
+      bone: 2,
+      poison: 1,
+    });
+    expect(steppedModel.pachinko.lastPhysicsEvent).toBe(
+      'spike-mushroom-3 entered the cauldron sensor.',
+    );
+    expect(steppedModel.pachinko.lastDomainEvent).toBe(
+      'Mushroom entered the cauldron.',
+    );
 
     const thirdDropModel = controller.getViewModel();
 
     expect(
       thirdDropModel.pachinko.cauldronContents.map((entry) => entry.kind),
-    ).toEqual(['herb', 'ash', 'herb']);
-    expect(thirdDropModel.pachinko.eventLog).toContain(
-      'Herb bounced off neutral peg peg-left-guide.',
-    );
+    ).toEqual(['ash', 'bone', 'mushroom']);
     expect(thirdDropModel.pachinko.eventLog).toContain('Herb hit Fire Peg.');
     expect(thirdDropModel.pachinko.eventLog).toContain(
       'Herb touched Fire Peg and became Ash.',
     );
     expect(thirdDropModel.pachinko.eventLog).toContain(
-      'Herb bounced off neutral peg peg-right-guide.',
+      'Bone bounced off neutral peg peg-left-guide.',
+    );
+    expect(thirdDropModel.pachinko.eventLog).toContain(
+      'Mushroom bounced off neutral peg peg-right-guide.',
     );
     expect(thirdDropModel.pachinko.dropsRemaining).toBe(0);
     expect(thirdDropModel.pachinko.setupPhase).toBe('ready-for-claw');
     expect(thirdDropModel.pachinko.canDrop).toBe(false);
 
-    const fourthDrop = controller.dropHerb();
+    const fourthDrop = controller.dropSelectedIngredient();
 
-    expect(fourthDrop.pachinko.ingredients.map((ingredient) => ingredient.id)).toEqual([
-      'spike-herb-1',
-      'spike-herb-2',
-      'spike-herb-3',
-    ]);
+    expect(
+      fourthDrop.pachinko.ingredients.map((ingredient) => ingredient.id),
+    ).toEqual(['spike-herb-1', 'spike-bone-2', 'spike-mushroom-3']);
     expect(fourthDrop.pachinko.dropsRemaining).toBe(0);
     expect(fourthDrop.pachinko.setupPhase).toBe('ready-for-claw');
+
+    world.setObjectPosition('spike-herb-1', 310, 430);
+    world.setObjectPosition('spike-bone-2', 190, 430);
+    world.setObjectPosition('spike-mushroom-3', 430, 430);
+
+    let clawModel = controller.selectClawPosition('center');
+
+    expect(clawModel.pachinko.claw.selectedPositionId).toBe('center');
+    expect(clawModel.pachinko.claw.canGrab).toBe(true);
+
+    clawModel = controller.grabWithClaw();
+
+    expect(clawModel.pachinko.claw.grabUsed).toBe(true);
+    expect(clawModel.pachinko.claw.canGrab).toBe(false);
+    expect(clawModel.pachinko.claw.grabbedContents).toEqual([
+      {
+        ingredientId: 'spike-herb-1',
+        bodyId: 'spike-herb-1',
+        kind: 'ash',
+        label: 'Ash',
+      },
+    ]);
+    expect(clawModel.pachinko.claw.grabbedMaterialPreview).toEqual({
+      healing: 0,
+      bone: 1,
+      poison: 0,
+    });
+    expect(
+      clawModel.pachinko.cauldronContents.map((entry) => entry.kind),
+    ).toEqual(['bone', 'mushroom']);
+    expect(clawModel.pachinko.materialPreview).toEqual({
+      healing: 0,
+      bone: 1,
+      poison: 1,
+    });
+    expect(
+      clawModel.pachinko.ingredients.map((ingredient) => ingredient.id),
+    ).toEqual(['spike-bone-2', 'spike-mushroom-3']);
+    expect(clawModel.pachinko.vat.canSelect).toBe(true);
+    expect(clawModel.pachinko.vat.canSubmit).toBe(true);
+    expect(clawModel.pachinko.vat.submitted).toBe(false);
+    expect(world.getObject('spike-herb-1')).toBeUndefined();
+    expect(clawModel.pachinko.eventLog).toContain('Claw grabbed Ash.');
+
+    let vatModel = controller.selectVat('bone');
+
+    expect(vatModel.pachinko.vat.selectedVatId).toBe('bone');
+    expect(vatModel.pachinko.vat.selectedVatLabel).toBe('Bone Vat');
+    expect(vatModel.pachinko.vat.canSubmit).toBe(true);
+
+    vatModel = controller.submitGrabbedBatchToVat();
+
+    expect(vatModel.pachinko.vat.submitted).toBe(true);
+    expect(vatModel.pachinko.vat.canSelect).toBe(false);
+    expect(vatModel.pachinko.vat.canSubmit).toBe(false);
+    expect(vatModel.pachinko.vat.lastScoringResult).toEqual({
+      vatId: 'bone',
+      vatLabel: 'Bone Vat',
+      ingredientScores: [
+        {
+          ingredientId: 'spike-herb-1',
+          kind: 'ash',
+          label: 'Ash',
+          value: 2,
+        },
+      ],
+      total: 2,
+    });
+    expect(vatModel.pachinko.lastDomainEvent).toBe(
+      'Bone Vat scored 2 debug gold.',
+    );
+    expect(vatModel.pachinko.eventLog).toContain(
+      'Bone Vat scored 2 debug gold.',
+    );
+
+    const secondSubmit = controller.submitGrabbedBatchToVat();
+
+    expect(secondSubmit.pachinko.vat.lastScoringResult).toEqual(
+      vatModel.pachinko.vat.lastScoringResult,
+    );
+    expect(
+      secondSubmit.pachinko.eventLog.filter(
+        (entry) => entry === 'Bone Vat scored 2 debug gold.',
+      ),
+    ).toHaveLength(1);
+
+    const secondGrab = controller.grabWithClaw();
+
+    expect(secondGrab.pachinko.claw.grabbedContents).toEqual(
+      clawModel.pachinko.claw.grabbedContents,
+    );
+    expect(
+      secondGrab.pachinko.cauldronContents.map((entry) => entry.kind),
+    ).toEqual(['bone', 'mushroom']);
 
     const clearedModel = controller.clearSpike();
 
@@ -205,12 +378,37 @@ describe('PachinkoSpikeController', () => {
     expect(clearedModel.pachinko.setupPhase).toBe('drop-phase');
     expect(clearedModel.pachinko.dropsRemaining).toBe(3);
     expect(clearedModel.pachinko.selectedLaneId).toBe('center');
+    expect(clearedModel.pachinko.selectedIngredientKind).toBe('herb');
+    expect(clearedModel.pachinko.ingredientQueue).toEqual([
+      { kind: 'herb', label: 'Herb', dropped: false, selected: true },
+      { kind: 'bone', label: 'Bone', dropped: false, selected: false },
+      { kind: 'mushroom', label: 'Mushroom', dropped: false, selected: false },
+    ]);
     expect(clearedModel.pachinko.lastPhysicsEvent).toBeUndefined();
     expect(clearedModel.pachinko.lastDomainEvent).toBeUndefined();
+    expect(clearedModel.pachinko.claw.selectedPositionId).toBe('center');
+    expect(clearedModel.pachinko.claw.canGrab).toBe(false);
+    expect(clearedModel.pachinko.claw.grabUsed).toBe(false);
+    expect(clearedModel.pachinko.claw.grabbedContents).toEqual([]);
+    expect(clearedModel.pachinko.claw.grabbedMaterialPreview).toEqual({
+      healing: 0,
+      bone: 0,
+      poison: 0,
+    });
+    expect(clearedModel.pachinko.vat.selectedVatId).toBe('healing');
+    expect(clearedModel.pachinko.vat.canSelect).toBe(false);
+    expect(clearedModel.pachinko.vat.canSubmit).toBe(false);
+    expect(clearedModel.pachinko.vat.submitted).toBe(false);
+    expect(clearedModel.pachinko.vat.lastScoringResult).toBeUndefined();
     expect(clearedModel.pachinko.eventLog).toEqual([
       'Run initialized.',
       'Spike reset. Cauldron cleared.',
     ]);
+    expect(clearedModel.pachinko.materialPreview).toEqual({
+      healing: 0,
+      bone: 0,
+      poison: 0,
+    });
     expect(world.resetCount).toBe(2);
   });
 });

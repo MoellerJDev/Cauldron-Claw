@@ -37,6 +37,10 @@ export interface SimObject {
   friction?: number;
   frictionAir?: number;
   density?: number;
+  initialVelocity?: {
+    x: number;
+    y: number;
+  };
 }
 
 export interface SimObjectSnapshot extends SimObject {

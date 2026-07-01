@@ -3,6 +3,8 @@ import type { ReactionKind } from '../core/reactions/types';
 import type { RunState } from '../core/run-state/types';
 
 export type ViewDropLaneId = 'left' | 'center' | 'right';
+export type ViewClawPositionId = 'left' | 'center' | 'right';
+export type ViewDebugVatId = 'healing' | 'bone' | 'poison';
 export type ViewSetupPhase = 'drop-phase' | 'ready-for-claw';
 
 export interface GameViewModel {
@@ -19,12 +21,18 @@ export interface PachinkoSpikeViewModel {
   dropsRemaining: number;
   maxDrops: number;
   canDrop: boolean;
+  selectedIngredientKind: IngredientKind | undefined;
+  selectedIngredientLabel: string | undefined;
+  ingredientQueue: readonly PachinkoIngredientQueueEntryViewModel[];
   ingredients: readonly PachinkoIngredientViewModel[];
   pegs: readonly PachinkoPegViewModel[];
   reactionZones: readonly PachinkoReactionZoneViewModel[];
   cauldronSensors: readonly PachinkoCauldronSensorViewModel[];
   cauldronBoundaries: readonly PachinkoBoundaryViewModel[];
   cauldronContents: readonly PachinkoCauldronContentViewModel[];
+  materialPreview: PachinkoMaterialPreviewViewModel;
+  claw: PachinkoClawViewModel;
+  vat: PachinkoVatViewModel;
   lastPhysicsEvent: string | undefined;
   lastDomainEvent: string | undefined;
   eventLog: readonly string[];
@@ -55,6 +63,13 @@ export interface PachinkoIngredientViewModel {
   y: number;
   radius: number;
   color: number;
+}
+
+export interface PachinkoIngredientQueueEntryViewModel {
+  kind: IngredientKind;
+  label: string;
+  dropped: boolean;
+  selected: boolean;
 }
 
 export interface PachinkoPegViewModel {
@@ -103,4 +118,77 @@ export interface PachinkoCauldronContentViewModel {
   kind: IngredientKind;
   label: string;
   enteredCauldron: boolean;
+}
+
+export interface PachinkoMaterialPreviewViewModel {
+  healing: number;
+  bone: number;
+  poison: number;
+}
+
+export interface PachinkoClawViewModel {
+  selectedPositionId: ViewClawPositionId;
+  positions: readonly PachinkoClawPositionViewModel[];
+  grabArea: PachinkoClawGrabAreaViewModel;
+  canGrab: boolean;
+  grabUsed: boolean;
+  grabbedContents: readonly PachinkoGrabbedContentViewModel[];
+  grabbedMaterialPreview: PachinkoMaterialPreviewViewModel;
+}
+
+export interface PachinkoClawPositionViewModel {
+  id: ViewClawPositionId;
+  label: string;
+  x: number;
+  y: number;
+  selected: boolean;
+}
+
+export interface PachinkoClawGrabAreaViewModel {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PachinkoGrabbedContentViewModel {
+  ingredientId: string;
+  bodyId: string;
+  kind: IngredientKind;
+  label: string;
+}
+
+export interface PachinkoVatViewModel {
+  selectedVatId: ViewDebugVatId;
+  selectedVatLabel: string;
+  vats: readonly PachinkoDebugVatViewModel[];
+  canSelect: boolean;
+  canSubmit: boolean;
+  submitted: boolean;
+  lastScoringResult: PachinkoVatScoringResultViewModel | undefined;
+}
+
+export interface PachinkoDebugVatViewModel {
+  id: ViewDebugVatId;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: number;
+  selected: boolean;
+}
+
+export interface PachinkoVatScoringResultViewModel {
+  vatId: ViewDebugVatId;
+  vatLabel: string;
+  ingredientScores: readonly PachinkoVatIngredientScoreViewModel[];
+  total: number;
+}
+
+export interface PachinkoVatIngredientScoreViewModel {
+  ingredientId: string;
+  kind: IngredientKind;
+  label: string;
+  value: number;
 }

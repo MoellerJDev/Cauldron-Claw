@@ -7,26 +7,54 @@ import type {
   PachinkoBoundaryViewModel,
   PachinkoCauldronContentViewModel,
   PachinkoCauldronSensorViewModel,
+  PachinkoClawGrabAreaViewModel,
+  PachinkoClawPositionViewModel,
+  PachinkoDebugVatViewModel,
+  PachinkoGrabbedContentViewModel,
+  PachinkoIngredientQueueEntryViewModel,
   PachinkoIngredientViewModel,
   PachinkoPegViewModel,
   PachinkoReactionZoneViewModel,
+  PachinkoVatScoringResultViewModel,
 } from '../../view/GameViewModel';
 import {
   INGREDIENT_COLORS,
   SPIKE_BOARD,
+  SPIKE_CLAW_POSITIONS,
+  SPIKE_DEBUG_VATS,
   SPIKE_DROP_LANES,
   SPIKE_DROP_START,
+  getSpikeClawPosition,
+  getSpikeDebugVat,
   getSpikeDropLane,
 } from './spikeConfig';
 import type { SpikeCauldronState } from './spikeCauldronState';
+import {
+  canUseSpikeClawGrab,
+  type SpikeClawPhaseState,
+} from './spikeClawPhaseState';
 import type { SpikeDiagnostics } from './spikeDiagnostics';
+import {
+  canDropSelectedSpikeIngredient,
+  type SpikeIngredientQueueState,
+} from './spikeIngredientQueueState';
+import { buildSpikeMaterialPreview } from './spikeMaterialPreview';
 import { canUseSpikeDrop, type SpikeDropPhaseState } from './spikeDropPhaseState';
+import {
+  canSelectSpikeVat,
+  canSubmitSpikeVatBatch,
+  type SpikeVatPhaseState,
+} from './spikeVatPhaseState';
+import type { SpikeVatScoringResult } from './spikeVatScoring';
 
 export interface SpikeViewModelInput {
   runState: RunState;
   ingredients: readonly Ingredient[];
   cauldronState: SpikeCauldronState;
   dropPhaseState: SpikeDropPhaseState;
+  ingredientQueueState: SpikeIngredientQueueState;
+  clawPhaseState: SpikeClawPhaseState;
+  vatPhaseState: SpikeVatPhaseState;
   diagnostics: SpikeDiagnostics;
   snapshots: readonly SimObjectSnapshot[];
 }
@@ -49,7 +77,20 @@ export function buildSpikeViewModel(input: SpikeViewModelInput): GameViewModel {
       dropsUsed: input.dropPhaseState.dropsUsed,
       dropsRemaining: input.dropPhaseState.dropsRemaining,
       maxDrops: input.dropPhaseState.maxDrops,
-      canDrop: canUseSpikeDrop(input.dropPhaseState),
+      canDrop:
+        canUseSpikeDrop(input.dropPhaseState) &&
+        canDropSelectedSpikeIngredient(input.ingredientQueueState),
+      selectedIngredientKind: input.ingredientQueueState.selectedKind,
+      selectedIngredientLabel:
+        input.ingredientQueueState.selectedKind === undefined
+          ? undefined
+          : INGREDIENT_DEFS[input.ingredientQueueState.selectedKind].label,
+      ingredientQueue: input.ingredientQueueState.entries.map((entry) =>
+        createIngredientQueueEntryViewModel(
+          entry,
+          input.ingredientQueueState.selectedKind,
+        ),
+      ),
       ingredients: input.ingredients.map((ingredient) =>
         createIngredientViewModel(
           ingredient,
@@ -72,13 +113,77 @@ export function buildSpikeViewModel(input: SpikeViewModelInput): GameViewModel {
       cauldronBoundaries: input.snapshots
         .filter((snapshot) => snapshot.kind === 'cauldron-boundary')
         .map(createBoundaryViewModel),
-      cauldronContents: input.cauldronState.ingredients.map(
-        createCauldronContentViewModel,
+      cauldronContents: input.cauldronState.ingredients
+        .filter((entry) => !entry.extracted)
+        .map(createCauldronContentViewModel),
+      materialPreview: buildSpikeMaterialPreview(
+        input.cauldronState.ingredients,
       ),
+      claw: {
+        selectedPositionId: input.clawPhaseState.selectedPositionId,
+        positions: SPIKE_CLAW_POSITIONS.map((position) =>
+          createClawPositionViewModel(
+            position,
+            input.clawPhaseState.selectedPositionId,
+          ),
+        ),
+        grabArea: createClawGrabAreaViewModel(
+          input.clawPhaseState.selectedPositionId,
+        ),
+        canGrab: canUseSpikeClawGrab(
+          input.clawPhaseState,
+          input.dropPhaseState.phase,
+        ),
+        grabUsed: input.clawPhaseState.grabUsed,
+        grabbedContents: input.clawPhaseState.grabbedIngredients.map(
+          createGrabbedContentViewModel,
+        ),
+        grabbedMaterialPreview: buildSpikeMaterialPreview(
+          input.clawPhaseState.grabbedIngredients.map((ingredient) => ({
+            kind: ingredient.kind,
+            enteredCauldron: true,
+          })),
+        ),
+      },
+      vat: {
+        selectedVatId: input.vatPhaseState.selectedVatId,
+        selectedVatLabel: getSpikeDebugVat(input.vatPhaseState.selectedVatId)
+          .label,
+        vats: SPIKE_DEBUG_VATS.map((vat) =>
+          createDebugVatViewModel(vat, input.vatPhaseState.selectedVatId),
+        ),
+        canSelect: canSelectSpikeVat(
+          input.vatPhaseState,
+          input.clawPhaseState.grabbedIngredients,
+        ),
+        canSubmit: canSubmitSpikeVatBatch(
+          input.vatPhaseState,
+          input.clawPhaseState.grabbedIngredients,
+        ),
+        submitted: input.vatPhaseState.submitted,
+        lastScoringResult:
+          input.vatPhaseState.lastScoringResult === undefined
+            ? undefined
+            : createVatScoringResultViewModel(
+                input.vatPhaseState.lastScoringResult,
+              ),
+      },
       lastPhysicsEvent: input.diagnostics.lastPhysicsEvent,
       lastDomainEvent: input.diagnostics.lastDomainEvent,
       eventLog: input.runState.log,
     },
+  };
+}
+
+function createIngredientQueueEntryViewModel(
+  entry: SpikeIngredientQueueState['entries'][number],
+  selectedKind: SpikeIngredientQueueState['selectedKind'],
+): PachinkoIngredientQueueEntryViewModel {
+  return {
+    kind: entry.kind,
+    label: entry.label,
+    dropped: entry.dropped,
+    selected: entry.kind === selectedKind,
   };
 }
 
@@ -184,5 +289,68 @@ function createCauldronContentViewModel(
     kind: entry.kind,
     label: INGREDIENT_DEFS[entry.kind].label,
     enteredCauldron: entry.enteredCauldron,
+  };
+}
+
+function createClawPositionViewModel(
+  position: (typeof SPIKE_CLAW_POSITIONS)[number],
+  selectedPositionId: SpikeClawPhaseState['selectedPositionId'],
+): PachinkoClawPositionViewModel {
+  return {
+    id: position.id,
+    label: position.label,
+    x: position.x,
+    y: position.y,
+    selected: position.id === selectedPositionId,
+  };
+}
+
+function createClawGrabAreaViewModel(
+  selectedPositionId: SpikeClawPhaseState['selectedPositionId'],
+): PachinkoClawGrabAreaViewModel {
+  const position = getSpikeClawPosition(selectedPositionId);
+
+  return {
+    x: position.x,
+    y: position.y,
+    width: position.grabWidth,
+    height: position.grabHeight,
+  };
+}
+
+function createGrabbedContentViewModel(
+  entry: SpikeClawPhaseState['grabbedIngredients'][number],
+): PachinkoGrabbedContentViewModel {
+  return {
+    ingredientId: entry.ingredientId,
+    bodyId: entry.bodyId,
+    kind: entry.kind,
+    label: INGREDIENT_DEFS[entry.kind].label,
+  };
+}
+
+function createDebugVatViewModel(
+  vat: (typeof SPIKE_DEBUG_VATS)[number],
+  selectedVatId: SpikeVatPhaseState['selectedVatId'],
+): PachinkoDebugVatViewModel {
+  return {
+    ...vat,
+    selected: vat.id === selectedVatId,
+  };
+}
+
+function createVatScoringResultViewModel(
+  result: SpikeVatScoringResult,
+): PachinkoVatScoringResultViewModel {
+  return {
+    vatId: result.vatId,
+    vatLabel: result.vatLabel,
+    ingredientScores: result.ingredientScores.map((score) => ({
+      ingredientId: score.ingredientId,
+      kind: score.kind,
+      label: score.label,
+      value: score.value,
+    })),
+    total: result.total,
   };
 }

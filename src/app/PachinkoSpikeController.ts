@@ -1,5 +1,9 @@
 import { createIngredient } from '../core/ingredients/createIngredient';
-import type { Ingredient, IngredientId } from '../core/ingredients/types';
+import type {
+  Ingredient,
+  IngredientId,
+  IngredientKind,
+} from '../core/ingredients/types';
 import { createInitialRunState } from '../core/run-state/createInitialRunState';
 import type { RunState } from '../core/run-state/types';
 import type { PhysicsEvent } from '../sim/PhysicsEvent';
@@ -10,7 +14,9 @@ import { INGREDIENT_DEFS } from '../data/ingredients';
 import {
   appendSpikeLog,
   createSpikeResetRunState,
+  formatSpikeClawGrabLogEntry,
   formatSpikeDropLogEntry,
+  formatSpikeVatSubmitLogEntry,
 } from './pachinko-spike/spikeDebugLog';
 import {
   createEmptySpikeDiagnostics,
@@ -20,7 +26,10 @@ import {
 import {
   createSpikeIngredientObject,
   createSpikeStaticObjects,
+  getSpikeClawPosition,
   getSpikePegDefinition,
+  type SpikeDebugVatId,
+  type SpikeClawPositionId,
   type SpikeDropLaneId,
 } from './pachinko-spike/spikeConfig';
 import { resolveSpikeReaction } from './pachinko-spike/spikeReactionHandler';
@@ -28,18 +37,47 @@ import { buildSpikeViewModel } from './pachinko-spike/spikeViewModel';
 import {
   clearSpikeCauldronState,
   createEmptySpikeCauldronState,
+  markIngredientsExtracted,
   markIngredientEnteredCauldron,
   trackDroppedIngredient,
   updateTrackedIngredientKind,
   type SpikeCauldronState,
 } from './pachinko-spike/spikeCauldronState';
+import { findSpikeClawGrabbedIngredients } from './pachinko-spike/spikeClawExtraction';
 import {
+  canUseSpikeClawGrab,
+  createInitialSpikeClawPhaseState,
+  resetSpikeClawPhaseState,
+  selectSpikeClawPosition,
+  useSpikeClawGrab,
+  type SpikeClawPhaseState,
+} from './pachinko-spike/spikeClawPhaseState';
+import {
+  canUseSpikeDrop,
   createInitialSpikeDropPhaseState,
   resetSpikeDropPhaseState,
   selectSpikeDropLane,
   useSpikeDrop,
   type SpikeDropPhaseState,
 } from './pachinko-spike/spikeDropPhaseState';
+import {
+  canDropSelectedSpikeIngredient,
+  createInitialSpikeIngredientQueueState,
+  dropSelectedSpikeIngredient,
+  resetSpikeIngredientQueueState,
+  selectSpikeQueuedIngredient,
+  type SpikeIngredientQueueState,
+  type SpikeQueuedIngredientKind,
+} from './pachinko-spike/spikeIngredientQueueState';
+import {
+  canSelectSpikeVat,
+  createInitialSpikeVatPhaseState,
+  resetSpikeVatPhaseState,
+  selectSpikeVat,
+  submitSpikeVatBatch,
+  type SpikeVatPhaseState,
+} from './pachinko-spike/spikeVatPhaseState';
+import { scoreSpikeVatBatch } from './pachinko-spike/spikeVatScoring';
 
 export class PachinkoSpikeController {
   private readonly world: PhysicsWorld;
@@ -48,6 +86,12 @@ export class PachinkoSpikeController {
   private cauldronState: SpikeCauldronState = createEmptySpikeCauldronState();
   private dropPhaseState: SpikeDropPhaseState =
     createInitialSpikeDropPhaseState();
+  private ingredientQueueState: SpikeIngredientQueueState =
+    createInitialSpikeIngredientQueueState();
+  private clawPhaseState: SpikeClawPhaseState =
+    createInitialSpikeClawPhaseState();
+  private vatPhaseState: SpikeVatPhaseState =
+    createInitialSpikeVatPhaseState();
   private diagnostics: SpikeDiagnostics = createEmptySpikeDiagnostics();
   private runState: RunState;
   private readonly handledPegContacts = new Set<string>();
@@ -69,16 +113,35 @@ export class PachinkoSpikeController {
     return this.getViewModel();
   }
 
-  dropHerb(): GameViewModel {
-    const dropResult = useSpikeDrop(this.dropPhaseState);
-
-    if (!dropResult.accepted || dropResult.dropNumber === undefined) {
+  dropSelectedIngredient(): GameViewModel {
+    if (
+      !canUseSpikeDrop(this.dropPhaseState) ||
+      !canDropSelectedSpikeIngredient(this.ingredientQueueState)
+    ) {
       return this.getViewModel();
     }
 
+    const queueResult = dropSelectedSpikeIngredient(
+      this.ingredientQueueState,
+    );
+    const dropResult = useSpikeDrop(this.dropPhaseState);
+
+    if (
+      !queueResult.accepted ||
+      queueResult.ingredientKind === undefined ||
+      !dropResult.accepted ||
+      dropResult.dropNumber === undefined
+    ) {
+      return this.getViewModel();
+    }
+
+    this.ingredientQueueState = queueResult.state;
     this.dropPhaseState = dropResult.state;
 
-    const ingredient = this.createFreshIngredient(dropResult.dropNumber);
+    const ingredient = this.createFreshIngredient(
+      dropResult.dropNumber,
+      queueResult.ingredientKind,
+    );
     this.ingredientsById.set(ingredient.id, ingredient);
     this.cauldronState = trackDroppedIngredient(
       this.cauldronState,
@@ -96,6 +159,7 @@ export class PachinkoSpikeController {
       formatSpikeDropLogEntry(
         dropResult.dropNumber,
         this.dropPhaseState.selectedLaneId,
+        ingredient.kind,
       ),
     );
 
@@ -107,12 +171,123 @@ export class PachinkoSpikeController {
     return this.getViewModel();
   }
 
+  selectIngredient(kind: SpikeQueuedIngredientKind): GameViewModel {
+    this.ingredientQueueState = selectSpikeQueuedIngredient(
+      this.ingredientQueueState,
+      kind,
+    );
+    return this.getViewModel();
+  }
+
+  selectClawPosition(positionId: SpikeClawPositionId): GameViewModel {
+    this.clawPhaseState = selectSpikeClawPosition(
+      this.clawPhaseState,
+      positionId,
+    );
+    return this.getViewModel();
+  }
+
+  grabWithClaw(): GameViewModel {
+    if (!canUseSpikeClawGrab(this.clawPhaseState, this.dropPhaseState.phase)) {
+      return this.getViewModel();
+    }
+
+    const clawPosition = getSpikeClawPosition(
+      this.clawPhaseState.selectedPositionId,
+    );
+    const grabbedIngredients = findSpikeClawGrabbedIngredients({
+      cauldronState: this.cauldronState,
+      snapshots: this.world.getObjectSnapshots(),
+      grabArea: {
+        x: clawPosition.x,
+        y: clawPosition.y,
+        width: clawPosition.grabWidth,
+        height: clawPosition.grabHeight,
+      },
+    });
+    const grabResult = useSpikeClawGrab(
+      this.clawPhaseState,
+      this.dropPhaseState.phase,
+      grabbedIngredients,
+    );
+
+    if (!grabResult.accepted) {
+      return this.getViewModel();
+    }
+
+    this.clawPhaseState = grabResult.state;
+    this.cauldronState = markIngredientsExtracted(
+      this.cauldronState,
+      grabbedIngredients.map((ingredient) => ingredient.ingredientId),
+    );
+
+    for (const ingredient of grabbedIngredients) {
+      this.ingredientsById.delete(ingredient.ingredientId);
+      this.world.removeObject(ingredient.bodyId);
+    }
+
+    const logEntry = formatSpikeClawGrabLogEntry(grabbedIngredients);
+
+    this.diagnostics = {
+      ...this.diagnostics,
+      lastDomainEvent: logEntry,
+    };
+    this.runState = appendSpikeLog(this.runState, logEntry);
+
+    return this.getViewModel();
+  }
+
+  selectVat(vatId: SpikeDebugVatId): GameViewModel {
+    if (
+      !canSelectSpikeVat(
+        this.vatPhaseState,
+        this.clawPhaseState.grabbedIngredients,
+      )
+    ) {
+      return this.getViewModel();
+    }
+
+    this.vatPhaseState = selectSpikeVat(this.vatPhaseState, vatId);
+    return this.getViewModel();
+  }
+
+  submitGrabbedBatchToVat(): GameViewModel {
+    const scoringResult = scoreSpikeVatBatch(
+      this.vatPhaseState.selectedVatId,
+      this.clawPhaseState.grabbedIngredients,
+    );
+    const submitResult = submitSpikeVatBatch(
+      this.vatPhaseState,
+      this.clawPhaseState.grabbedIngredients,
+      scoringResult,
+    );
+
+    if (!submitResult.accepted) {
+      return this.getViewModel();
+    }
+
+    this.vatPhaseState = submitResult.state;
+
+    const logEntry = formatSpikeVatSubmitLogEntry(scoringResult);
+
+    this.diagnostics = {
+      ...this.diagnostics,
+      lastDomainEvent: logEntry,
+    };
+    this.runState = appendSpikeLog(this.runState, logEntry);
+
+    return this.getViewModel();
+  }
+
   clearSpike(): GameViewModel {
     this.ingredientsById.clear();
     this.cauldronState = clearSpikeCauldronState();
     this.handledPegContacts.clear();
     this.handledReactionObjects.clear();
     this.dropPhaseState = resetSpikeDropPhaseState();
+    this.ingredientQueueState = resetSpikeIngredientQueueState();
+    this.clawPhaseState = resetSpikeClawPhaseState();
+    this.vatPhaseState = resetSpikeVatPhaseState();
     this.diagnostics = createEmptySpikeDiagnostics();
     this.runState = createSpikeResetRunState(this.baseRunState);
     this.seedStaticWorld();
@@ -126,6 +301,9 @@ export class PachinkoSpikeController {
       ingredients: [...this.ingredientsById.values()],
       cauldronState: this.cauldronState,
       dropPhaseState: this.dropPhaseState,
+      ingredientQueueState: this.ingredientQueueState,
+      clawPhaseState: this.clawPhaseState,
+      vatPhaseState: this.vatPhaseState,
       diagnostics: this.diagnostics,
       snapshots: this.world.getObjectSnapshots(),
     });
@@ -251,7 +429,10 @@ export class PachinkoSpikeController {
     this.runState = appendSpikeLog(this.runState, logEntry);
   }
 
-  private createFreshIngredient(dropNumber: number): Ingredient {
-    return createIngredient(`spike-herb-${dropNumber}`, 'herb');
+  private createFreshIngredient(
+    dropNumber: number,
+    kind: IngredientKind,
+  ): Ingredient {
+    return createIngredient(`spike-${kind}-${dropNumber}`, kind);
   }
 }

@@ -9,6 +9,7 @@ export interface SpikeCauldronIngredient {
   bodyId: string;
   kind: IngredientKind;
   enteredCauldron: boolean;
+  extracted: boolean;
 }
 
 export interface SpikeCauldronState {
@@ -44,6 +45,7 @@ export function trackDroppedIngredient(
         bodyId,
         kind: ingredient.kind,
         enteredCauldron: false,
+        extracted: false,
       },
     ],
   };
@@ -59,6 +61,24 @@ export function updateTrackedIngredientKind(
         ? {
             ...entry,
             kind: ingredient.kind,
+          }
+        : entry,
+    ),
+  };
+}
+
+export function markIngredientsExtracted(
+  state: SpikeCauldronState,
+  ingredientIds: readonly IngredientId[],
+): SpikeCauldronState {
+  const extractedIds = new Set(ingredientIds);
+
+  return {
+    ingredients: state.ingredients.map((entry) =>
+      extractedIds.has(entry.ingredientId)
+        ? {
+            ...entry,
+            extracted: true,
           }
         : entry,
     ),

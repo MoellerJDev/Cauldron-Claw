@@ -4,7 +4,9 @@ import { createInitialRunState } from '../../core/run-state/createInitialRunStat
 import {
   appendSpikeLog,
   createSpikeResetRunState,
+  formatSpikeClawGrabLogEntry,
   formatSpikeDropLogEntry,
+  formatSpikeVatSubmitLogEntry,
 } from './spikeDebugLog';
 
 describe('spike debug log helpers', () => {
@@ -22,7 +24,30 @@ describe('spike debug log helpers', () => {
       'Spike reset. Cauldron cleared.',
     ]);
     expect(withDrop.log).toContain(
-      'Drop 1: Fresh Herb dropped from Center lane.',
+      'Drop 1: Herb dropped from Center lane.',
     );
+
+    expect(formatSpikeDropLogEntry(2, 'left', 'bone')).toBe(
+      'Drop 2: Bone dropped from Left lane.',
+    );
+    expect(
+      formatSpikeClawGrabLogEntry([
+        {
+          kind: 'ash',
+        },
+        {
+          kind: 'mushroom',
+        },
+      ]),
+    ).toBe('Claw grabbed Ash, Mushroom.');
+    expect(formatSpikeClawGrabLogEntry([])).toBe('Claw grabbed nothing.');
+    expect(
+      formatSpikeVatSubmitLogEntry({
+        vatId: 'bone',
+        vatLabel: 'Bone Vat',
+        ingredientScores: [],
+        total: 5,
+      }),
+    ).toBe('Bone Vat scored 5 debug gold.');
   });
 });

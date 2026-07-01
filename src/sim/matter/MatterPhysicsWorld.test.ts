@@ -87,6 +87,32 @@ describe('MatterPhysicsWorld collision event contract', () => {
       ingredientId: 'spike-herb-1',
     });
   });
+
+  it('removes objects from physics snapshots and later collisions', () => {
+    const world = new MatterPhysicsWorld();
+
+    world.addObject(createIngredientObject('spike-herb-1'));
+    world.addObject({
+      id: 'neutral-peg-test',
+      kind: 'peg',
+      x: 100,
+      y: 100,
+      isStatic: true,
+      shape: {
+        type: 'circle',
+        radius: 15,
+      },
+    });
+
+    world.removeObject('spike-herb-1');
+
+    expect(
+      world
+        .getObjectSnapshots()
+        .some((snapshot) => snapshot.id === 'spike-herb-1'),
+    ).toBe(false);
+    expect(world.step(16)).toEqual([]);
+  });
 });
 
 function createIngredientObject(ingredientId: string): SimObject {

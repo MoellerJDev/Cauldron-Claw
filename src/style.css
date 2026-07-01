@@ -74,7 +74,10 @@ body {
   color: #c7b7a5;
 }
 
-.lane-selector {
+.lane-selector,
+.ingredient-selector,
+.claw-selector,
+.vat-selector {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
@@ -83,14 +86,20 @@ body {
   border: 0;
 }
 
-.lane-selector legend {
+.lane-selector legend,
+.ingredient-selector legend,
+.claw-selector legend,
+.vat-selector legend {
   grid-column: 1 / -1;
   margin-bottom: 2px;
   color: #d9b88f;
   font-weight: 700;
 }
 
-.lane-selector label {
+.lane-selector label,
+.ingredient-selector label,
+.claw-selector label,
+.vat-selector label {
   display: grid;
   place-items: center;
   min-height: 38px;
@@ -102,15 +111,35 @@ body {
   font-weight: 700;
 }
 
-.lane-selector input {
+.lane-selector input,
+.ingredient-selector input,
+.claw-selector input,
+.vat-selector input {
   position: absolute;
   opacity: 0;
 }
 
-.lane-selector label:has(input:checked) {
+.lane-selector label:has(input:checked),
+.ingredient-selector label:has(input:checked),
+.claw-selector label:has(input:checked),
+.vat-selector label:has(input:checked) {
   border-color: #d9b88f;
   background: #d9b88f;
   color: #17120f;
+}
+
+.ingredient-selector label:has(input:disabled) {
+  border-color: #4a372d;
+  background: #231a16;
+  color: #8c8177;
+  cursor: not-allowed;
+}
+
+.vat-selector label:has(input:disabled) {
+  border-color: #4a372d;
+  background: #231a16;
+  color: #8c8177;
+  cursor: not-allowed;
 }
 
 .control-row {

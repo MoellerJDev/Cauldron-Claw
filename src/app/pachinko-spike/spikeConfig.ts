@@ -15,6 +15,8 @@ export const SPIKE_BOARD = {
 } as const;
 
 export type SpikeDropLaneId = 'left' | 'center' | 'right';
+export type SpikeClawPositionId = 'left' | 'center' | 'right';
+export type SpikeDebugVatId = 'healing' | 'bone' | 'poison';
 
 export interface SpikeDropLaneDefinition {
   id: SpikeDropLaneId;
@@ -22,6 +24,7 @@ export interface SpikeDropLaneDefinition {
   x: number;
   topY: number;
   bottomY: number;
+  initialVelocityX: number;
 }
 
 export type SpikePegKind = 'neutral' | 'fire';
@@ -36,6 +39,25 @@ export interface SpikePegDefinition {
   reactionKind?: ReactionKind;
 }
 
+export interface SpikeClawPositionDefinition {
+  id: SpikeClawPositionId;
+  label: string;
+  x: number;
+  y: number;
+  grabWidth: number;
+  grabHeight: number;
+}
+
+export interface SpikeDebugVatDefinition {
+  id: SpikeDebugVatId;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: number;
+}
+
 export const SPIKE_DROP_LANES: readonly SpikeDropLaneDefinition[] = [
   {
     id: 'left',
@@ -43,6 +65,7 @@ export const SPIKE_DROP_LANES: readonly SpikeDropLaneDefinition[] = [
     x: 230,
     topY: 58,
     bottomY: 468,
+    initialVelocityX: -0.35,
   },
   {
     id: 'center',
@@ -50,6 +73,7 @@ export const SPIKE_DROP_LANES: readonly SpikeDropLaneDefinition[] = [
     x: 310,
     topY: 58,
     bottomY: 468,
+    initialVelocityX: 0,
   },
   {
     id: 'right',
@@ -57,11 +81,79 @@ export const SPIKE_DROP_LANES: readonly SpikeDropLaneDefinition[] = [
     x: 390,
     topY: 58,
     bottomY: 468,
+    initialVelocityX: 0.35,
   },
 ] as const;
 
 export function isSpikeDropLaneId(value: string): value is SpikeDropLaneId {
   return SPIKE_DROP_LANES.some((lane) => lane.id === value);
+}
+
+export const SPIKE_CLAW_POSITIONS: readonly SpikeClawPositionDefinition[] = [
+  {
+    id: 'left',
+    label: 'Left',
+    x: 190,
+    y: 414,
+    grabWidth: 150,
+    grabHeight: 138,
+  },
+  {
+    id: 'center',
+    label: 'Center',
+    x: 310,
+    y: 414,
+    grabWidth: 150,
+    grabHeight: 138,
+  },
+  {
+    id: 'right',
+    label: 'Right',
+    x: 430,
+    y: 414,
+    grabWidth: 150,
+    grabHeight: 138,
+  },
+] as const;
+
+export function isSpikeClawPositionId(
+  value: string,
+): value is SpikeClawPositionId {
+  return SPIKE_CLAW_POSITIONS.some((position) => position.id === value);
+}
+
+export const SPIKE_DEBUG_VATS: readonly SpikeDebugVatDefinition[] = [
+  {
+    id: 'healing',
+    label: 'Healing Vat',
+    x: 150,
+    y: 520,
+    width: 132,
+    height: 32,
+    color: 0x75b85a,
+  },
+  {
+    id: 'bone',
+    label: 'Bone Vat',
+    x: 310,
+    y: 520,
+    width: 132,
+    height: 32,
+    color: 0xd8d0bd,
+  },
+  {
+    id: 'poison',
+    label: 'Poison Vat',
+    x: 470,
+    y: 520,
+    width: 132,
+    height: 32,
+    color: 0xa867c8,
+  },
+] as const;
+
+export function isSpikeDebugVatId(value: string): value is SpikeDebugVatId {
+  return SPIKE_DEBUG_VATS.some((vat) => vat.id === value);
 }
 
 export const SPIKE_DROP_START = {
@@ -169,6 +261,30 @@ export function getSpikeDropLane(
   return lane;
 }
 
+export function getSpikeClawPosition(
+  positionId: SpikeClawPositionId,
+): SpikeClawPositionDefinition {
+  const position = SPIKE_CLAW_POSITIONS.find(
+    (candidate) => candidate.id === positionId,
+  );
+
+  if (position === undefined) {
+    throw new Error(`Unknown spike claw position: ${positionId}`);
+  }
+
+  return position;
+}
+
+export function getSpikeDebugVat(vatId: SpikeDebugVatId): SpikeDebugVatDefinition {
+  const vat = SPIKE_DEBUG_VATS.find((candidate) => candidate.id === vatId);
+
+  if (vat === undefined) {
+    throw new Error(`Unknown spike debug vat: ${vatId}`);
+  }
+
+  return vat;
+}
+
 export function getSpikePegDefinition(
   pegId: string,
 ): SpikePegDefinition | undefined {
@@ -193,6 +309,10 @@ export function createSpikeIngredientObject(
     friction: 0.01,
     frictionAir: 0.006,
     density: 0.001,
+    initialVelocity: {
+      x: lane.initialVelocityX,
+      y: 0,
+    },
     shape: {
       type: 'circle',
       radius: INGREDIENT_DEFS[ingredient.kind].physical.radius,

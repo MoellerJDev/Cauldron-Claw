@@ -40,6 +40,11 @@ export class MatterObjectMap {
     return this.getObject(id);
   }
 
+  delete(id: string): void {
+    this.bodyById.delete(id);
+    this.objectById.delete(id);
+  }
+
   entries(): readonly MatterObjectEntry[] {
     return [...this.bodyById.entries()].flatMap(([id, body]) => {
       const object = this.objectById.get(id);

@@ -4,6 +4,7 @@ import {
   clearSpikeCauldronState,
   createEmptySpikeCauldronState,
   markIngredientEnteredCauldron,
+  markIngredientsExtracted,
   trackDroppedIngredient,
   updateTrackedIngredientKind,
 } from './spikeCauldronState';
@@ -49,6 +50,7 @@ describe('spike cauldron state', () => {
       bodyId: 'spike-herb-1',
       kind: 'ash',
       enteredCauldron: true,
+      extracted: false,
     });
   });
 
@@ -95,12 +97,44 @@ describe('spike cauldron state', () => {
         bodyId: 'spike-herb-1',
         kind: 'herb',
         enteredCauldron: true,
+        extracted: false,
       },
       {
         ingredientId: 'spike-herb-2',
         bodyId: 'spike-herb-2',
         kind: 'ash',
         enteredCauldron: true,
+        extracted: false,
+      },
+    ]);
+  });
+
+  it('marks extracted ingredients without removing cauldron history', () => {
+    const herb = createIngredient('spike-herb-1', 'herb');
+    const bone = createIngredient('spike-bone-2', 'bone');
+    const withHerb = trackDroppedIngredient(
+      createEmptySpikeCauldronState(),
+      herb,
+      'spike-herb-1',
+    );
+    const withBone = trackDroppedIngredient(withHerb, bone, 'spike-bone-2');
+
+    const extracted = markIngredientsExtracted(withBone, ['spike-bone-2']);
+
+    expect(extracted.ingredients).toEqual([
+      {
+        ingredientId: 'spike-herb-1',
+        bodyId: 'spike-herb-1',
+        kind: 'herb',
+        enteredCauldron: false,
+        extracted: false,
+      },
+      {
+        ingredientId: 'spike-bone-2',
+        bodyId: 'spike-bone-2',
+        kind: 'bone',
+        enteredCauldron: false,
+        extracted: true,
       },
     ]);
   });

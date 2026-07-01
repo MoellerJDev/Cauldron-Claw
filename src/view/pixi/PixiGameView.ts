@@ -178,6 +178,9 @@ export class PixiGameView implements GameView {
       .stroke({ color: 0xa47648, width: 3, alpha: 0.9 });
     this.addText('Cauldron Catch', 86, 374, 15, 0xd9b88f);
 
+    this.drawClawDebug(model);
+    this.drawVatDebug(model);
+
     for (const boundary of cauldronBoundaries) {
       graphics
         .rect(
@@ -201,6 +204,115 @@ export class PixiGameView implements GameView {
         ingredient.y - 6,
         12,
         0x1b1512,
+      );
+    }
+  }
+
+  private drawClawDebug(model: GameViewModel): void {
+    if (this.playfield === undefined) {
+      return;
+    }
+
+    const graphics = this.playfield;
+    const { claw } = model.pachinko;
+    const area = claw.grabArea;
+    const selectedPosition = claw.positions.find(
+      (position) => position.selected,
+    );
+
+    graphics
+      .rect(
+        area.x - area.width / 2,
+        area.y - area.height / 2,
+        area.width,
+        area.height,
+      )
+      .fill({ color: 0x8fb7c8, alpha: claw.canGrab ? 0.18 : 0.08 })
+      .stroke({
+        color: claw.canGrab ? 0x8fb7c8 : 0x5f7280,
+        width: 2,
+        alpha: 0.85,
+      });
+
+    for (const position of claw.positions) {
+      const topY = area.y - area.height / 2 - 34;
+
+      graphics
+        .circle(position.x, topY, position.selected ? 7 : 5)
+        .fill(position.selected ? 0xf4dcc0 : 0x6d5143)
+        .stroke({
+          color: position.selected ? 0x8fb7c8 : 0xa47648,
+          width: position.selected ? 3 : 1,
+        });
+      this.addCenteredText(
+        position.label,
+        position.x,
+        topY - 20,
+        11,
+        position.selected ? 0xf4dcc0 : 0xc7b7a5,
+      );
+    }
+
+    if (selectedPosition === undefined) {
+      return;
+    }
+
+    const clawTopY = area.y - area.height / 2 - 28;
+    const clawBottomY = area.y - area.height / 2 + 8;
+
+    graphics
+      .moveTo(selectedPosition.x, clawTopY)
+      .lineTo(selectedPosition.x, clawBottomY)
+      .stroke({ color: 0xf4dcc0, width: 3 });
+    graphics
+      .moveTo(selectedPosition.x - 26, clawBottomY)
+      .lineTo(selectedPosition.x + 26, clawBottomY)
+      .stroke({ color: 0xf4dcc0, width: 3 });
+    graphics
+      .moveTo(selectedPosition.x - 18, clawBottomY)
+      .lineTo(selectedPosition.x - 32, clawBottomY + 24)
+      .stroke({ color: 0xf4dcc0, width: 3 });
+    graphics
+      .moveTo(selectedPosition.x + 18, clawBottomY)
+      .lineTo(selectedPosition.x + 32, clawBottomY + 24)
+      .stroke({ color: 0xf4dcc0, width: 3 });
+    this.addCenteredText(
+      claw.grabUsed ? 'Grab used' : 'Grab area',
+      area.x,
+      area.y - area.height / 2 + 18,
+      12,
+      0xbde6cf,
+    );
+  }
+
+  private drawVatDebug(model: GameViewModel): void {
+    if (this.playfield === undefined) {
+      return;
+    }
+
+    const graphics = this.playfield;
+
+    for (const vat of model.pachinko.vat.vats) {
+      graphics
+        .roundRect(
+          vat.x - vat.width / 2,
+          vat.y - vat.height / 2,
+          vat.width,
+          vat.height,
+          6,
+        )
+        .fill({ color: vat.color, alpha: vat.selected ? 0.4 : 0.18 })
+        .stroke({
+          color: vat.selected ? 0xf4dcc0 : vat.color,
+          width: vat.selected ? 3 : 1,
+          alpha: 0.95,
+        });
+      this.addCenteredText(
+        vat.label,
+        vat.x,
+        vat.y - 5,
+        11,
+        vat.selected ? 0xf7efe3 : 0xd9b88f,
       );
     }
   }

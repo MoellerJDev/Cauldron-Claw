@@ -31,6 +31,7 @@ export class MatterPhysicsWorld implements PhysicsWorld {
     if (object.density !== undefined) {
       bodyOptions.density = object.density;
     }
+
     const body =
       object.shape.type === 'circle'
         ? Matter.Bodies.circle(
@@ -47,8 +48,23 @@ export class MatterPhysicsWorld implements PhysicsWorld {
             bodyOptions,
           );
 
+    if (object.initialVelocity !== undefined) {
+      Matter.Body.setVelocity(body, object.initialVelocity);
+    }
+
     this.objectMap.set(object.id, body, object);
     Matter.World.add(this.engine.world, body);
+  }
+
+  removeObject(id: string): void {
+    const body = this.objectMap.getBody(id);
+
+    if (body === undefined) {
+      return;
+    }
+
+    Matter.World.remove(this.engine.world, body);
+    this.objectMap.delete(id);
   }
 
   step(deltaMs: number): readonly PhysicsEvent[] {
