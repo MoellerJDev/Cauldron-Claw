@@ -6,7 +6,6 @@ import {
   createSpikeResetRunState,
   formatSpikeClawGrabLogEntry,
   formatSpikeDropLogEntry,
-  formatSpikeVatSubmitLogEntry,
 } from './spikeDebugLog';
 
 describe('spike debug log helpers', () => {
@@ -41,13 +40,5 @@ describe('spike debug log helpers', () => {
       ]),
     ).toBe('Claw grabbed Ash, Mushroom.');
     expect(formatSpikeClawGrabLogEntry([])).toBe('Claw grabbed nothing.');
-    expect(
-      formatSpikeVatSubmitLogEntry({
-        vatId: 'bone',
-        vatLabel: 'Bone Vat',
-        ingredientScores: [],
-        total: 5,
-      }),
-    ).toBe('Bone Vat scored 5 debug gold.');
   });
 });

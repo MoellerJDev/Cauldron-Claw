@@ -64,16 +64,34 @@ function formatVatScoringResult(
   result: GameViewModel['pachinko']['vat']['lastScoringResult'],
 ): readonly string[] {
   if (result === undefined) {
-    return ['Scoring result: none', 'Total batch score: 0'];
+    return [
+      'Scoring result: none',
+      'Submitted ingredients: none',
+      'Total batch gold: 0',
+      'Suspicion delta: 0',
+    ];
   }
 
   return [
-    'Scoring result:',
-    ...result.ingredientScores.map(
-      (score) => `- ${score.label} scored ${score.value}`,
-    ),
-    `Total batch score: ${result.total}`,
+    `Scoring result: ${result.vatLabel}`,
+    `Submitted ingredients: ${formatSubmittedIngredients(result)}`,
+    `Total batch gold: ${result.gold}`,
+    `Suspicion delta: ${result.suspicionDelta}`,
   ];
+}
+
+function formatSubmittedIngredients(
+  result: NonNullable<
+    GameViewModel['pachinko']['vat']['lastScoringResult']
+  >,
+): string {
+  if (result.submittedIngredients.length === 0) {
+    return 'none';
+  }
+
+  return result.submittedIngredients
+    .map((ingredient) => ingredient.label)
+    .join(', ');
 }
 
 function formatGrabbedContents(

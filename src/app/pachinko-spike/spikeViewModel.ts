@@ -345,12 +345,13 @@ function createVatScoringResultViewModel(
   return {
     vatId: result.vatId,
     vatLabel: result.vatLabel,
-    ingredientScores: result.ingredientScores.map((score) => ({
-      ingredientId: score.ingredientId,
-      kind: score.kind,
-      label: score.label,
-      value: score.value,
+    submittedIngredients: result.submittedIngredients.map((ingredient) => ({
+      ingredientId: ingredient.ingredientId,
+      kind: ingredient.kind,
+      label: ingredient.label,
     })),
-    total: result.total,
+    gold: result.gold,
+    suspicionDelta: result.suspicionDelta,
+    logEntries: result.logEntries,
   };
 }

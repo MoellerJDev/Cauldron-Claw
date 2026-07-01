@@ -182,13 +182,14 @@ export interface PachinkoDebugVatViewModel {
 export interface PachinkoVatScoringResultViewModel {
   vatId: ViewDebugVatId;
   vatLabel: string;
-  ingredientScores: readonly PachinkoVatIngredientScoreViewModel[];
-  total: number;
+  submittedIngredients: readonly PachinkoVatSubmittedIngredientViewModel[];
+  gold: number;
+  suspicionDelta: number;
+  logEntries: readonly string[];
 }
 
-export interface PachinkoVatIngredientScoreViewModel {
+export interface PachinkoVatSubmittedIngredientViewModel {
   ingredientId: string;
   kind: IngredientKind;
   label: string;
-  value: number;
 }

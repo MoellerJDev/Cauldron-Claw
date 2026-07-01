@@ -2,7 +2,6 @@ import type { RunState } from '../../core/run-state/types';
 import type { IngredientKind } from '../../core/ingredients/types';
 import { INGREDIENT_DEFS } from '../../data/ingredients';
 import { getSpikeDropLane, type SpikeDropLaneId } from './spikeConfig';
-import type { SpikeVatScoringResult } from './spikeVatScoring';
 
 export function createSpikeResetRunState(baseState: RunState): RunState {
   return {
@@ -44,10 +43,4 @@ export function formatSpikeClawGrabLogEntry(
   );
 
   return `Claw grabbed ${labels.join(', ')}.`;
-}
-
-export function formatSpikeVatSubmitLogEntry(
-  result: SpikeVatScoringResult,
-): string {
-  return `${result.vatLabel} scored ${result.total} debug gold.`;
 }

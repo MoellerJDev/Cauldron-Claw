@@ -1,33 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { scoreSpikeVatBatch } from './spikeVatScoring';
+import { CONTRACT_DEFS } from '../../data/contracts';
+import { createInitialRunState } from '../../core/run-state/createInitialRunState';
+import { submitSpikeVatBatchToCore } from './spikeVatScoring';
 
-describe('spike vat scoring', () => {
-  it('scores Herb in the Healing Vat', () => {
-    expect(
-      scoreSpikeVatBatch('healing', [
+describe('spike vat scoring adapter', () => {
+  it('uses core Healing Vat scoring for Herb', () => {
+    const submission = submitSpikeVatBatchToCore(
+      createInitialRunState(CONTRACT_DEFS.cleanStart),
+      'healing',
+      [
         {
           ingredientId: 'spike-herb-1',
           kind: 'herb',
         },
-      ]),
-    ).toMatchObject({
+      ],
+    );
+
+    expect(submission.result).toMatchObject({
       vatId: 'healing',
       vatLabel: 'Healing Vat',
-      total: 3,
-      ingredientScores: [
+      gold: 3,
+      suspicionDelta: 0,
+      submittedIngredients: [
         {
           ingredientId: 'spike-herb-1',
           kind: 'herb',
           label: 'Herb',
-          value: 3,
         },
       ],
     });
+    expect(submission.state.gold).toBe(3);
+    expect(submission.state.round.score.goldByVat.healing).toBe(3);
   });
 
-  it('scores Ash and Bone in the Bone Vat', () => {
-    expect(
-      scoreSpikeVatBatch('bone', [
+  it('uses core Bone Vat scoring, including Ash and Bone combo behavior', () => {
+    const submission = submitSpikeVatBatchToCore(
+      createInitialRunState(CONTRACT_DEFS.cleanStart),
+      'bone',
+      [
         {
           ingredientId: 'spike-herb-1',
           kind: 'ash',
@@ -36,83 +46,54 @@ describe('spike vat scoring', () => {
           ingredientId: 'spike-bone-2',
           kind: 'bone',
         },
-      ]),
-    ).toMatchObject({
-      vatId: 'bone',
-      vatLabel: 'Bone Vat',
-      total: 5,
-      ingredientScores: [
-        {
-          ingredientId: 'spike-herb-1',
-          kind: 'ash',
-          label: 'Ash',
-          value: 2,
-        },
-        {
-          ingredientId: 'spike-bone-2',
-          kind: 'bone',
-          label: 'Bone',
-          value: 3,
-        },
       ],
-    });
+    );
+
+    expect(submission.result.gold).toBe(8);
+    expect(submission.result.suspicionDelta).toBe(0);
+    expect(submission.state.gold).toBe(8);
+    expect(submission.state.round.score.goldByVat.bone).toBe(8);
+    expect(submission.state.round.score.familyCounts.bone).toBe(1);
+    expect(submission.state.round.score.familyCounts.waste).toBe(1);
   });
 
-  it('scores Mushroom in the Poison Vat', () => {
-    expect(
-      scoreSpikeVatBatch('poison', [
+  it('uses core Poison Vat scoring and suspicion for Mushroom', () => {
+    const submission = submitSpikeVatBatchToCore(
+      createInitialRunState(CONTRACT_DEFS.cleanStart),
+      'poison',
+      [
         {
           ingredientId: 'spike-mushroom-3',
           kind: 'mushroom',
-        },
-      ]),
-    ).toMatchObject({
-      vatId: 'poison',
-      vatLabel: 'Poison Vat',
-      total: 4,
-      ingredientScores: [
-        {
-          ingredientId: 'spike-mushroom-3',
-          kind: 'mushroom',
-          label: 'Mushroom',
-          value: 4,
         },
       ],
-    });
+    );
+
+    expect(submission.result.gold).toBe(4);
+    expect(submission.result.suspicionDelta).toBe(1);
+    expect(submission.state.gold).toBe(4);
+    expect(submission.state.suspicion).toBe(1);
+    expect(submission.state.round.score.goldByVat.poison).toBe(4);
+    expect(submission.state.round.score.suspicionGained).toBe(1);
   });
 
-  it('scores unmatched ingredients as zero and aggregates totals', () => {
-    expect(
-      scoreSpikeVatBatch('bone', [
-        {
-          ingredientId: 'spike-herb-1',
-          kind: 'ash',
-        },
-        {
-          ingredientId: 'spike-bone-2',
-          kind: 'bone',
-        },
+  it('reports core score consistently for unmatched ingredients', () => {
+    const submission = submitSpikeVatBatchToCore(
+      createInitialRunState(CONTRACT_DEFS.cleanStart),
+      'healing',
+      [
         {
           ingredientId: 'spike-mushroom-3',
           kind: 'mushroom',
         },
-      ]),
-    ).toMatchObject({
-      total: 5,
-      ingredientScores: [
-        {
-          kind: 'ash',
-          value: 2,
-        },
-        {
-          kind: 'bone',
-          value: 3,
-        },
-        {
-          kind: 'mushroom',
-          value: 0,
-        },
       ],
-    });
+    );
+
+    expect(submission.result.gold).toBe(0);
+    expect(submission.result.suspicionDelta).toBe(0);
+    expect(submission.state.gold).toBe(0);
+    expect(submission.result.logEntries).toEqual([
+      'Mushroom scored 0 gold in the healing vat.',
+    ]);
   });
 });

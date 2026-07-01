@@ -20,15 +20,16 @@ const grabbedBatch = [
 const scoringResult: SpikeVatScoringResult = {
   vatId: 'bone',
   vatLabel: 'Bone Vat',
-  ingredientScores: [
+  submittedIngredients: [
     {
       ingredientId: 'spike-herb-1',
       kind: 'ash',
       label: 'Ash',
-      value: 2,
     },
   ],
-  total: 2,
+  gold: 2,
+  suspicionDelta: 0,
+  logEntries: ['Ash scored 2 gold in the bone vat.'],
 };
 
 describe('spike vat phase state', () => {

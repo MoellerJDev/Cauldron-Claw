@@ -16,7 +16,6 @@ import {
   createSpikeResetRunState,
   formatSpikeClawGrabLogEntry,
   formatSpikeDropLogEntry,
-  formatSpikeVatSubmitLogEntry,
 } from './pachinko-spike/spikeDebugLog';
 import {
   createEmptySpikeDiagnostics,
@@ -77,7 +76,7 @@ import {
   submitSpikeVatBatch,
   type SpikeVatPhaseState,
 } from './pachinko-spike/spikeVatPhaseState';
-import { scoreSpikeVatBatch } from './pachinko-spike/spikeVatScoring';
+import { submitSpikeVatBatchToCore } from './pachinko-spike/spikeVatScoring';
 
 export class PachinkoSpikeController {
   private readonly world: PhysicsWorld;
@@ -252,14 +251,15 @@ export class PachinkoSpikeController {
   }
 
   submitGrabbedBatchToVat(): GameViewModel {
-    const scoringResult = scoreSpikeVatBatch(
+    const coreSubmission = submitSpikeVatBatchToCore(
+      this.runState,
       this.vatPhaseState.selectedVatId,
       this.clawPhaseState.grabbedIngredients,
     );
     const submitResult = submitSpikeVatBatch(
       this.vatPhaseState,
       this.clawPhaseState.grabbedIngredients,
-      scoringResult,
+      coreSubmission.result,
     );
 
     if (!submitResult.accepted) {
@@ -267,14 +267,15 @@ export class PachinkoSpikeController {
     }
 
     this.vatPhaseState = submitResult.state;
-
-    const logEntry = formatSpikeVatSubmitLogEntry(scoringResult);
+    this.runState = coreSubmission.state;
+    const logEntry =
+      coreSubmission.result.logEntries.at(-1) ??
+      `${coreSubmission.result.vatLabel} scored ${coreSubmission.result.gold} gold.`;
 
     this.diagnostics = {
       ...this.diagnostics,
       lastDomainEvent: logEntry,
     };
-    this.runState = appendSpikeLog(this.runState, logEntry);
 
     return this.getViewModel();
   }

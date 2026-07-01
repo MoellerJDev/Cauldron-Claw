@@ -1,60 +1,59 @@
+import { getSpikeDebugVat, type SpikeDebugVatId } from './spikeConfig';
 import type { IngredientId, IngredientKind } from '../../core/ingredients/types';
 import { INGREDIENT_DEFS } from '../../data/ingredients';
-import { getSpikeDebugVat, type SpikeDebugVatId } from './spikeConfig';
+import { createIngredient } from '../../core/ingredients/createIngredient';
+import type { RunState } from '../../core/run-state/types';
+import { submitGrabToVat } from '../../core/scoring/vatScoring';
 
 export interface SpikeVatScoringIngredient {
   ingredientId: IngredientId;
   kind: IngredientKind;
 }
 
-export interface SpikeVatIngredientScore {
+export interface SpikeVatSubmittedIngredient {
   ingredientId: IngredientId;
   kind: IngredientKind;
   label: string;
-  value: number;
 }
 
 export interface SpikeVatScoringResult {
   vatId: SpikeDebugVatId;
   vatLabel: string;
-  ingredientScores: readonly SpikeVatIngredientScore[];
-  total: number;
+  submittedIngredients: readonly SpikeVatSubmittedIngredient[];
+  gold: number;
+  suspicionDelta: number;
+  logEntries: readonly string[];
 }
 
-export function scoreSpikeVatBatch(
+export interface SpikeVatCoreSubmission {
+  state: RunState;
+  result: SpikeVatScoringResult;
+}
+
+export function submitSpikeVatBatchToCore(
+  state: RunState,
   vatId: SpikeDebugVatId,
   ingredients: readonly SpikeVatScoringIngredient[],
-): SpikeVatScoringResult {
+): SpikeVatCoreSubmission {
+  const coreIngredients = ingredients.map((ingredient) =>
+    createIngredient(ingredient.ingredientId, ingredient.kind),
+  );
+  const submission = submitGrabToVat(state, vatId, coreIngredients);
   const vat = getSpikeDebugVat(vatId);
-  const ingredientScores = ingredients.map((ingredient) => ({
-    ingredientId: ingredient.ingredientId,
-    kind: ingredient.kind,
-    label: INGREDIENT_DEFS[ingredient.kind].label,
-    value: scoreSpikeVatIngredient(vatId, ingredient.kind),
-  }));
 
   return {
-    vatId,
-    vatLabel: vat.label,
-    ingredientScores,
-    total: ingredientScores.reduce((sum, score) => sum + score.value, 0),
+    state: submission.state,
+    result: {
+      vatId,
+      vatLabel: vat.label,
+      submittedIngredients: ingredients.map((ingredient) => ({
+        ingredientId: ingredient.ingredientId,
+        kind: ingredient.kind,
+        label: INGREDIENT_DEFS[ingredient.kind].label,
+      })),
+      gold: submission.result.gold,
+      suspicionDelta: submission.result.suspicionDelta,
+      logEntries: submission.result.logEntries,
+    },
   };
-}
-
-function scoreSpikeVatIngredient(
-  vatId: SpikeDebugVatId,
-  kind: IngredientKind,
-): number {
-  switch (vatId) {
-    case 'healing':
-      return kind === 'herb' ? 3 : 0;
-    case 'bone':
-      if (kind === 'ash') {
-        return 2;
-      }
-
-      return kind === 'bone' ? 3 : 0;
-    case 'poison':
-      return kind === 'mushroom' ? 4 : 0;
-  }
 }

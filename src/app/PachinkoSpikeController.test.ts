@@ -334,21 +334,25 @@ describe('PachinkoSpikeController', () => {
     expect(vatModel.pachinko.vat.lastScoringResult).toEqual({
       vatId: 'bone',
       vatLabel: 'Bone Vat',
-      ingredientScores: [
+      submittedIngredients: [
         {
           ingredientId: 'spike-herb-1',
           kind: 'ash',
           label: 'Ash',
-          value: 2,
         },
       ],
-      total: 2,
+      gold: 2,
+      suspicionDelta: 0,
+      logEntries: ['Ash scored 2 gold in the bone vat.'],
     });
     expect(vatModel.pachinko.lastDomainEvent).toBe(
-      'Bone Vat scored 2 debug gold.',
+      'Ash scored 2 gold in the bone vat.',
     );
+    expect(vatModel.runState.gold).toBe(2);
+    expect(vatModel.runState.suspicion).toBe(0);
+    expect(vatModel.runState.round.score.goldByVat.bone).toBe(2);
     expect(vatModel.pachinko.eventLog).toContain(
-      'Bone Vat scored 2 debug gold.',
+      'Ash scored 2 gold in the bone vat.',
     );
 
     const secondSubmit = controller.submitGrabbedBatchToVat();
@@ -358,7 +362,7 @@ describe('PachinkoSpikeController', () => {
     );
     expect(
       secondSubmit.pachinko.eventLog.filter(
-        (entry) => entry === 'Bone Vat scored 2 debug gold.',
+        (entry) => entry === 'Ash scored 2 gold in the bone vat.',
       ),
     ).toHaveLength(1);
 
